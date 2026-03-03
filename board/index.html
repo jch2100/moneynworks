@@ -106,6 +106,8 @@
         const openPostIds = new Set();
         const unlockedPostIds = new Set();
         let lastPosts = [];
+        let authUser = null;
+        let unsubSnapshot = null;
 
         // ── DOM refs ──
         const adminBtn      = document.getElementById('admin-btn');
@@ -336,6 +338,10 @@
         // ── 폼 제출 (작성 / 수정) ──
         postForm.addEventListener('submit', async e => {
             e.preventDefault();
+            if (!authUser) {
+                alert('인증 처리 중입니다. 잠시 후 다시 시도해 주세요.');
+                return;
+            }
             const wasEditing = !!editingDocId;
             submitBtn.disabled = true;
             submitBtn.textContent = '처리 중...';
@@ -371,12 +377,14 @@
 
         // ── Firebase Auth + 실시간 게시글 로드 ──
         onAuthStateChanged(auth, user => {
+            authUser = user;
             if (!user) {
                 signInAnonymously(auth);
                 return;
             }
+            if (unsubSnapshot) return; // 중복 리스너 방지
             const q = query(collection(db, COL));
-            onSnapshot(q, snapshot => {
+            unsubSnapshot = onSnapshot(q, snapshot => {
                 const posts = [];
                 snapshot.forEach(docSnap => posts.push({ id: docSnap.id, ...docSnap.data() }));
                 posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
