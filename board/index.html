@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>게시판 | Money&Works</title>
+    <meta name="robots" content="noindex">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #F8FAFC; color: #0F172A; word-break: keep-all; }
+        .post-body { display: none; }
+        .post-body.open { display: block; }
+    </style>
+</head>
+<body class="p-6 md:p-12 min-h-screen">
+    <div class="max-w-4xl mx-auto">
+
+        <!-- Header -->
+        <header class="flex justify-between items-start mb-12">
+            <div>
+                <a href="../" class="text-xs font-bold text-slate-400 hover:text-blue-600 transition tracking-widest uppercase">← 메인 홈페이지로 이동</a>
+                <h1 class="text-4xl font-extrabold text-slate-900 mt-6 tracking-tighter">게시판</h1>
+                <p class="text-slate-500 text-sm mt-3 font-medium">강의 가이드와 실무 인사이트를 확인하세요.</p>
+            </div>
+            <button id="admin-btn"
+                class="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-white hover:text-blue-600 hover:border-blue-200 transition shadow-sm mt-8"
+                title="관리자 모드">⚙️</button>
+        </header>
+
+        <!-- Admin Panel -->
+        <div id="admin-panel" class="hidden mb-12 bg-white p-8 md:p-10 rounded-[2.5rem] shadow-xl border border-blue-100">
+            <div class="flex justify-between items-center mb-8">
+                <h2 id="form-heading" class="font-extrabold text-slate-900 text-lg tracking-tighter">새 게시글 작성</h2>
+                <button id="exit-admin-btn" class="text-xs text-slate-400 hover:text-slate-700 font-bold transition">✕ 관리자 종료</button>
+            </div>
+            <form id="post-form" class="grid gap-4">
+                <input type="text" id="f-title" placeholder="제목을 입력하세요" required
+                    class="p-4 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition">
+                <select id="f-cat"
+                    class="p-4 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition">
+                    <option value="공지">공지</option>
+                    <option value="강의자료">강의자료</option>
+                    <option value="인사이트">인사이트</option>
+                </select>
+                <textarea id="f-content" placeholder="본문 내용을 입력하세요. (엔터로 줄바꿈 가능)" rows="8" required
+                    class="p-4 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition resize-none"></textarea>
+                <input type="url" id="f-link" placeholder="참조 링크 (선택사항 — Google Drive URL 등)"
+                    class="p-4 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition">
+                <div class="flex items-center gap-3 py-1">
+                    <input type="checkbox" id="f-secret" class="w-4 h-4 accent-blue-600">
+                    <label for="f-secret" class="text-sm font-semibold text-slate-700 cursor-pointer select-none">비밀글로 설정</label>
+                </div>
+                <input type="text" id="f-password" placeholder="비밀글 비밀번호를 입력하세요" disabled
+                    class="p-4 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                <div class="flex gap-3 mt-2">
+                    <button type="submit" id="submit-btn"
+                        class="flex-1 bg-blue-600 text-white p-4 rounded-xl font-bold text-sm hover:bg-slate-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                        게시글 올리기
+                    </button>
+                    <button type="button" id="cancel-edit-btn"
+                        class="hidden px-6 bg-slate-100 text-slate-700 p-4 rounded-xl font-bold text-sm hover:bg-slate-200 transition-all">
+                        취소
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Post List -->
+        <div id="post-list" class="space-y-3">
+            <div class="py-24 text-center text-slate-300 font-bold tracking-tight">콘텐츠를 불러오는 중입니다...</div>
+        </div>
+
+        <footer class="mt-24 pt-8 border-t border-slate-200 text-[10px] text-slate-400 font-bold tracking-widest uppercase text-center">
+            © 2026 Money&Works
+        </footer>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import {
+            getFirestore, collection, onSnapshot, query,
+            addDoc, doc, updateDoc, deleteDoc
+        } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+
+        // ── Firebase Config ──
+        const firebaseConfig = {
+            apiKey: "AIzaSyCecyxmwWpYXtlJczq6NYBNqfZrA3X_JMU",
+            authDomain: "moneynworks.firebaseapp.com",
+            projectId: "moneynworks",
+            storageBucket: "moneynworks.firebasestorage.app",
+            messagingSenderId: "395106061048",
+            appId: "1:395106061048:web:b8e3cd08a508c21e24490d"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const COL = 'artifacts/moneynworks/public/data/lectures';
+
+        // ── UI State ──
+        let isAdmin = false;
+        let editingDocId = null;
+        const openPostIds = new Set();
+        const unlockedPostIds = new Set();
+        let lastPosts = [];
+
+        // ── DOM refs ──
+        const adminBtn      = document.getElementById('admin-btn');
+        const adminPanel    = document.getElementById('admin-panel');
+        const exitAdminBtn  = document.getElementById('exit-admin-btn');
+        const postForm      = document.getElementById('post-form');
+        const fTitle        = document.getElementById('f-title');
+        const fCat          = document.getElementById('f-cat');
+        const fContent      = document.getElementById('f-content');
+        const fLink         = document.getElementById('f-link');
+        const fSecret       = document.getElementById('f-secret');
+        const fPassword     = document.getElementById('f-password');
+        const submitBtn     = document.getElementById('submit-btn');
+        const cancelEditBtn = document.getElementById('cancel-edit-btn');
+        const formHeading   = document.getElementById('form-heading');
+        const postList      = document.getElementById('post-list');
+
+        // ── Admin 활성화 ──
+        adminBtn.addEventListener('click', () => {
+            if (isAdmin) return;
+            const key = prompt('관리자 암호를 입력하세요.');
+            if (key === '2100') {
+                isAdmin = true;
+                adminPanel.classList.remove('hidden');
+                adminBtn.classList.add('text-blue-600', 'border-blue-300', 'bg-blue-50');
+                renderPosts(lastPosts);
+            } else if (key !== null) {
+                alert('권한이 없습니다.');
+            }
+        });
+
+        // ── Admin 종료 ──
+        exitAdminBtn.addEventListener('click', () => {
+            isAdmin = false;
+            editingDocId = null;
+            adminPanel.classList.add('hidden');
+            adminBtn.classList.remove('text-blue-600', 'border-blue-300', 'bg-blue-50');
+            resetForm();
+            renderPosts(lastPosts);
+        });
+
+        // ── 비밀글 체크박스 ──
+        fSecret.addEventListener('change', () => {
+            fPassword.disabled = !fSecret.checked;
+            if (!fSecret.checked) fPassword.value = '';
+        });
+
+        // ── 수정 취소 버튼 ──
+        cancelEditBtn.addEventListener('click', () => {
+            editingDocId = null;
+            resetForm();
+        });
+
+        function resetForm() {
+            postForm.reset();
+            fPassword.disabled = true;
+            formHeading.textContent = '새 게시글 작성';
+            submitBtn.textContent = '게시글 올리기';
+            cancelEditBtn.classList.add('hidden');
+        }
+
+        // ── 게시글 목록 렌더 (XSS 안전: DOM 생성 방식) ──
+        function renderPosts(posts) {
+            lastPosts = posts;
+            postList.innerHTML = '';
+
+            if (posts.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'py-24 text-center border-2 border-dashed border-slate-200 rounded-[3rem] text-slate-400 font-bold';
+                empty.textContent = '아직 작성된 게시글이 없습니다.';
+                postList.appendChild(empty);
+                return;
+            }
+
+            posts.forEach(post => {
+                postList.appendChild(createPostCard(post));
+            });
+        }
+
+        function createPostCard(post) {
+            const isLocked = post.isSecret && !unlockedPostIds.has(post.id);
+
+            const card = document.createElement('article');
+            card.className = 'bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden';
+
+            // ── 헤더 (클릭 토글) ──
+            const header = document.createElement('div');
+            header.className = 'flex items-center justify-between px-7 py-5 cursor-pointer hover:bg-slate-50 transition-colors select-none';
+
+            // 왼쪽: 카테고리 배지 + 제목
+            const left = document.createElement('div');
+            left.className = 'flex items-center gap-3 min-w-0 flex-1';
+
+            const badge = document.createElement('span');
+            badge.className = 'flex-shrink-0 px-3 py-1 bg-slate-900 text-white text-[10px] font-bold rounded-full tracking-tighter';
+            badge.textContent = post.category || '';
+
+            const titleEl = document.createElement('span');
+            titleEl.className = 'font-bold text-sm md:text-base leading-snug truncate';
+            if (isLocked) {
+                titleEl.textContent = '🔒 ' + (post.title || '');
+                titleEl.classList.add('text-slate-400');
+            } else {
+                titleEl.textContent = post.title || '';
+                titleEl.classList.add('text-slate-900');
+            }
+
+            left.appendChild(badge);
+            left.appendChild(titleEl);
+
+            // 오른쪽: 날짜 + 관리자 버튼
+            const right = document.createElement('div');
+            right.className = 'flex items-center gap-2 flex-shrink-0 ml-3';
+
+            const dateEl = document.createElement('span');
+            dateEl.className = 'text-xs text-slate-400 font-medium hidden sm:block';
+            dateEl.textContent = post.date || '';
+            right.appendChild(dateEl);
+
+            if (isAdmin) {
+                const editBtn = document.createElement('button');
+                editBtn.type = 'button';
+                editBtn.className = 'text-xs font-bold text-blue-600 hover:text-blue-800 px-2.5 py-1.5 rounded-lg hover:bg-blue-50 transition';
+                editBtn.textContent = '수정';
+                editBtn.addEventListener('click', e => { e.stopPropagation(); startEdit(post); });
+
+                const delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'text-xs font-bold text-red-400 hover:text-red-600 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition';
+                delBtn.textContent = '삭제';
+                delBtn.addEventListener('click', e => { e.stopPropagation(); handleDelete(post.id); });
+
+                right.appendChild(editBtn);
+                right.appendChild(delBtn);
+            }
+
+            header.appendChild(left);
+            header.appendChild(right);
+            card.appendChild(header);
+
+            // ── 본문 (접힘/펼침) ──
+            const body = document.createElement('div');
+            body.className = 'post-body border-t border-slate-50 px-7 pb-7';
+            if (openPostIds.has(post.id)) body.classList.add('open');
+
+            const dateMobile = document.createElement('p');
+            dateMobile.className = 'text-xs text-slate-400 font-medium sm:hidden pt-4 mb-1';
+            dateMobile.textContent = post.date || '';
+            body.appendChild(dateMobile);
+
+            const contentEl = document.createElement('div');
+            contentEl.className = 'text-sm leading-[1.9] text-slate-600 font-medium whitespace-pre-wrap pt-5';
+            contentEl.textContent = post.content || '';
+            body.appendChild(contentEl);
+
+            if (post.link) {
+                const linkWrap = document.createElement('div');
+                linkWrap.className = 'mt-6 pt-5 border-t border-slate-50';
+
+                const linkBtn = document.createElement('a');
+                linkBtn.href = post.link;
+                linkBtn.target = '_blank';
+                linkBtn.rel = 'noopener noreferrer';
+                linkBtn.className = 'inline-block bg-blue-600 text-white px-8 py-3 rounded-2xl text-xs font-bold hover:bg-slate-900 transition shadow-md shadow-blue-100/50';
+                linkBtn.textContent = '참조 링크 열기 ↗';
+
+                linkWrap.appendChild(linkBtn);
+                body.appendChild(linkWrap);
+            }
+
+            card.appendChild(body);
+
+            // ── 헤더 클릭 핸들러 ──
+            header.addEventListener('click', () => handlePostClick(post, body, isLocked));
+
+            return card;
+        }
+
+        function handlePostClick(post, bodyEl, isLocked) {
+            if (isLocked) {
+                const entered = prompt('비밀글입니다. 비밀번호를 입력하세요.');
+                if (entered === null) return;
+                if (entered === post.password) {
+                    unlockedPostIds.add(post.id);
+                    openPostIds.add(post.id);
+                    renderPosts(lastPosts); // 제목 잠금 해제 + 내용 표시를 위해 재렌더
+                } else {
+                    alert('비밀번호가 일치하지 않습니다.');
+                }
+                return;
+            }
+
+            if (openPostIds.has(post.id)) {
+                openPostIds.delete(post.id);
+                bodyEl.classList.remove('open');
+            } else {
+                openPostIds.add(post.id);
+                bodyEl.classList.add('open');
+            }
+        }
+
+        // ── 수정 시작: 폼에 기존 데이터 채우기 ──
+        function startEdit(post) {
+            editingDocId = post.id;
+            fTitle.value   = post.title    || '';
+            fCat.value     = post.category || '공지';
+            fContent.value = post.content  || '';
+            fLink.value    = post.link     || '';
+            fSecret.checked = !!post.isSecret;
+            fPassword.disabled = !post.isSecret;
+            fPassword.value = post.password || '';
+            formHeading.textContent = '게시글 수정';
+            submitBtn.textContent = '수정 완료';
+            cancelEditBtn.classList.remove('hidden');
+            adminPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // ── 삭제 ──
+        async function handleDelete(docId) {
+            if (!confirm('이 게시글을 삭제하시겠습니까?')) return;
+            try {
+                await deleteDoc(doc(db, COL, docId));
+            } catch (err) {
+                alert('삭제 오류: ' + err.message);
+            }
+        }
+
+        // ── 폼 제출 (작성 / 수정) ──
+        postForm.addEventListener('submit', async e => {
+            e.preventDefault();
+            const wasEditing = !!editingDocId;
+            submitBtn.disabled = true;
+            submitBtn.textContent = '처리 중...';
+
+            const isSecret = fSecret.checked;
+            const data = {
+                title:    fTitle.value.trim(),
+                category: fCat.value,
+                content:  fContent.value.trim(),
+                link:     fLink.value.trim(),
+                isSecret: isSecret,
+                password: isSecret ? fPassword.value.trim() : '',
+                date:     new Date().toLocaleDateString('ko-KR'),
+            };
+
+            try {
+                if (wasEditing) {
+                    await updateDoc(doc(db, COL, editingDocId), data);
+                    editingDocId = null;
+                    resetForm();
+                } else {
+                    data.createdAt = Date.now();
+                    await addDoc(collection(db, COL), data);
+                    resetForm();
+                }
+            } catch (err) {
+                alert('오류: ' + err.message);
+                submitBtn.textContent = wasEditing ? '수정 완료' : '게시글 올리기';
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        // ── Firebase Auth + 실시간 게시글 로드 ──
+        onAuthStateChanged(auth, user => {
+            if (!user) {
+                signInAnonymously(auth);
+                return;
+            }
+            const q = query(collection(db, COL));
+            onSnapshot(q, snapshot => {
+                const posts = [];
+                snapshot.forEach(docSnap => posts.push({ id: docSnap.id, ...docSnap.data() }));
+                posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                renderPosts(posts);
+            });
+        });
+    </script>
+</body>
+</html>
