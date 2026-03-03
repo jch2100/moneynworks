@@ -379,7 +379,25 @@
         onAuthStateChanged(auth, user => {
             authUser = user;
             if (!user) {
-                signInAnonymously(auth);
+                signInAnonymously(auth).catch(err => {
+                    // 에러 코드를 화면에 표시해 원인 파악
+                    postList.innerHTML = '';
+                    const wrap = document.createElement('div');
+                    wrap.className = 'py-24 text-center border-2 border-dashed border-red-100 rounded-[3rem]';
+                    const title = document.createElement('p');
+                    title.className = 'text-red-500 font-bold mb-2';
+                    title.textContent = 'Firebase 인증 오류';
+                    const detail = document.createElement('p');
+                    detail.className = 'text-slate-400 text-xs font-medium';
+                    detail.textContent = err.code + ': ' + err.message;
+                    const hint = document.createElement('p');
+                    hint.className = 'text-slate-300 text-xs mt-3 font-medium';
+                    hint.textContent = 'Firebase Console → Authentication → Sign-in method → Anonymous → 사용 설정 확인';
+                    wrap.appendChild(title);
+                    wrap.appendChild(detail);
+                    wrap.appendChild(hint);
+                    postList.appendChild(wrap);
+                });
                 return;
             }
             if (unsubSnapshot) return; // 중복 리스너 방지
